@@ -7,6 +7,7 @@ import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.core.PathUtils;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
+import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.plugin.analysis.ik.AnalysisIkPlugin;
 import org.wltea.analyzer.dic.Dictionary;
 
@@ -15,6 +16,7 @@ import java.nio.file.Path;
 
 public class Configuration {
 
+	private IndexSettings indexSettings;
 	private Environment environment;
 	private Settings settings;
 
@@ -29,7 +31,8 @@ public class Configuration {
 
 
 	@Inject
-	public Configuration(Environment env,Settings settings) {
+	public Configuration(IndexSettings indexSettings, Environment env,Settings settings) {
+		this.indexSettings = indexSettings;
 		this.environment = env;
 		this.settings=settings;
 
@@ -59,6 +62,10 @@ public class Configuration {
 
 	public Environment getEnvironment() {
 		return environment;
+	}
+
+	public IndexSettings getIndexSettings() {
+		return indexSettings;
 	}
 
 	public Settings getSettings() {
