@@ -31,24 +31,28 @@ import org.wltea.analyzer.dic.Hit;
 import java.util.LinkedList;
 import java.util.List;
 
-
 /**
- *  中文-日韩文子分词器
+ * 中文-日韩文子分词器
  */
 class CJKSegmenter implements ISegmenter {
-	
-	//子分词器标签
+	// 关联的index uuid
+	private String indexUUID;
+
+	// 子分词器标签
 	static final String SEGMENTER_NAME = "CJK_SEGMENTER";
-	//待处理的分词hit队列
+	// 待处理的分词hit队列
 	private List<Hit> tmpHits;
-	
-	
-	CJKSegmenter(){
+
+	CJKSegmenter(String indexUUID) {
+		this.indexUUID = indexUUID;
 		this.tmpHits = new LinkedList<Hit>();
 	}
 
-	/* (non-Javadoc)
-	 * @see org.wltea.analyzer.core.ISegmenter#analyze(org.wltea.analyzer.core.AnalyzeContext)
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.wltea.analyzer.core.ISegmenter#analyze(org.wltea.analyzer.core.
+	 * AnalyzeContext)
 	 */
 	public void analyze(AnalyzeContext context) {
 		if(CharacterUtil.CHAR_USELESS != context.getCurrentCharType()){
@@ -58,7 +62,7 @@ class CJKSegmenter implements ISegmenter {
 				//处理词段队列
 				Hit[] tmpArray = this.tmpHits.toArray(new Hit[this.tmpHits.size()]);
 				for(Hit hit : tmpArray){
-					hit = Dictionary.getSingleton().matchWithHit(context.getSegmentBuff(), context.getCursor() , hit);
+					hit = Dictionary.getSingleton(this.indexUUID).matchWithHit(context.getSegmentBuff(), context.getCursor() , hit);
 					if(hit.isMatch()){
 						//输出当前的词
 						Lexeme newLexeme = new Lexeme(context.getBufferOffset() , hit.getBegin() , context.getCursor() - hit.getBegin() + 1 , Lexeme.TYPE_CNWORD);
@@ -77,7 +81,7 @@ class CJKSegmenter implements ISegmenter {
 			
 			//*********************************
 			//再对当前指针位置的字符进行单字匹配
-			Hit singleCharHit = Dictionary.getSingleton().matchInMainDict(context.getSegmentBuff(), context.getCursor(), 1);
+			Hit singleCharHit = Dictionary.getSingleton(this.indexUUID).matchInMainDict(context.getSegmentBuff(), context.getCursor(), 1);
 			if(singleCharHit.isMatch()){//首字成词
 				//输出当前的词
 				Lexeme newLexeme = new Lexeme(context.getBufferOffset() , context.getCursor() , 1 , Lexeme.TYPE_CNWORD);
@@ -115,11 +119,13 @@ class CJKSegmenter implements ISegmenter {
 		}
 	}
 
-	/* (non-Javadoc)
+	/*
+	 * (non-Javadoc)
+	 * 
 	 * @see org.wltea.analyzer.core.ISegmenter#reset()
 	 */
 	public void reset() {
-		//清空队列
+		// 清空队列
 		this.tmpHits.clear();
 	}
 

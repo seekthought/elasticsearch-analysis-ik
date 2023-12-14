@@ -79,4 +79,8 @@ public class Configuration {
 	public boolean isEnableLowercase() {
 		return enableLowercase;
 	}
+
+	public String getIndexUUID() {
+		return indexSettings.getIndex().getUUID();
+	}
 }

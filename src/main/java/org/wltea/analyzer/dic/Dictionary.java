@@ -67,7 +67,7 @@ public class Dictionary {
 	/*
 	 * 词典单子实例
 	 */
-	private static Dictionary singleton;
+	private static HashMap<String, Dictionary> indexDicts = new HashMap<String, Dictionary>(16);
 
 	private DictSegment _MainDict;
 
@@ -130,6 +130,14 @@ public class Dictionary {
 		}
 	}
 
+	private String getOwnerIndexUUID() {
+		return this.configuration.getIndexUUID();
+	}
+
+	private Dictionary getCurrentDict() {
+		return indexDicts.get(getOwnerIndexUUID());
+	}
+
 	private String getProperty(String key){
 		if(props!=null){
 			return props.getProperty(key);
@@ -143,30 +151,31 @@ public class Dictionary {
 	 * @return Dictionary
 	 */
 	public static synchronized void initial(Configuration cfg) {
-		if (singleton == null) {
-			synchronized (Dictionary.class) {
-				if (singleton == null) {
+		String indexUUID = cfg.getIndexUUID();
 
-					singleton = new Dictionary(cfg);
-					singleton.loadMainDict();
-					singleton.loadSurnameDict();
-					singleton.loadQuantifierDict();
-					singleton.loadSuffixDict();
-					singleton.loadPrepDict();
-					singleton.loadStopWordDict();
+		// 不存在，则创建该index的词典
+		if (!indexDicts.containsKey(indexUUID)) {
+			synchronized (Dictionary.class) {
+				Dictionary dict = new Dictionary(cfg);
+
+					dict.loadMainDict();
+					dict.loadSurnameDict();
+					dict.loadQuantifierDict();
+					dict.loadSuffixDict();
+					dict.loadPrepDict();
+					dict.loadStopWordDict();
 
 					if(cfg.isEnableRemoteDict()){
 						// 建立监控线程
-						for (String location : singleton.getRemoteExtDictionarys()) {
+						for (String location : dict.getRemoteExtDictionarys()) {
 							// 10 秒是初始延迟可以修改的 60是间隔时间 单位秒
-							pool.scheduleAtFixedRate(new Monitor(location), 10, 60, TimeUnit.SECONDS);
+							pool.scheduleAtFixedRate(new Monitor(indexUUID, location), 10, 60, TimeUnit.SECONDS);
 						}
-						for (String location : singleton.getRemoteExtStopWordDictionarys()) {
-							pool.scheduleAtFixedRate(new Monitor(location), 10, 60, TimeUnit.SECONDS);
+						for (String location : dict.getRemoteExtStopWordDictionarys()) {
+							pool.scheduleAtFixedRate(new Monitor(indexUUID, location), 10, 60, TimeUnit.SECONDS);
 						}
 					}
 
-				}
 			}
 		}
 	}
@@ -292,11 +301,11 @@ public class Dictionary {
 	 * 
 	 * @return Dictionary 单例对象
 	 */
-	public static Dictionary getSingleton() {
-		if (singleton == null) {
+	public static Dictionary getSingleton(String indexUUID) {
+		if (!indexDicts.containsKey(indexUUID)) {
 			throw new IllegalStateException("ik dict has not been initialized yet, please call initial method first.");
 		}
-		return singleton;
+		return indexDicts.get(indexUUID);
 	}
 
 
@@ -311,7 +320,7 @@ public class Dictionary {
 			for (String word : words) {
 				if (word != null) {
 					// 批量加载词条到主内存词典中
-					singleton._MainDict.fillSegment(word.trim().toCharArray());
+					this.getCurrentDict()._MainDict.fillSegment(word.trim().toCharArray());
 				}
 			}
 		}
@@ -325,7 +334,7 @@ public class Dictionary {
 			for (String word : words) {
 				if (word != null) {
 					// 批量屏蔽词条
-					singleton._MainDict.disableSegment(word.trim().toCharArray());
+					this.getCurrentDict()._MainDict.disableSegment(word.trim().toCharArray());
 				}
 			}
 		}
@@ -337,7 +346,7 @@ public class Dictionary {
 	 * @return Hit 匹配结果描述
 	 */
 	public Hit matchInMainDict(char[] charArray) {
-		return singleton._MainDict.match(charArray);
+		return this.getCurrentDict()._MainDict.match(charArray);
 	}
 
 	/**
@@ -346,7 +355,7 @@ public class Dictionary {
 	 * @return Hit 匹配结果描述
 	 */
 	public Hit matchInMainDict(char[] charArray, int begin, int length) {
-		return singleton._MainDict.match(charArray, begin, length);
+		return this.getCurrentDict()._MainDict.match(charArray, begin, length);
 	}
 
 	/**
@@ -355,7 +364,7 @@ public class Dictionary {
 	 * @return Hit 匹配结果描述
 	 */
 	public Hit matchInQuantifierDict(char[] charArray, int begin, int length) {
-		return singleton._QuantifierDict.match(charArray, begin, length);
+		return this.getCurrentDict()._QuantifierDict.match(charArray, begin, length);
 	}
 
 	/**
@@ -374,7 +383,7 @@ public class Dictionary {
 	 * @return boolean
 	 */
 	public boolean isStopWord(char[] charArray, int begin, int length) {
-		return singleton._StopWords.match(charArray, begin, length).isMatch();
+		return this.getCurrentDict()._StopWords.match(charArray, begin, length).isMatch();
 	}
 
 	/**
@@ -565,7 +574,7 @@ public class Dictionary {
 		logger.info("start to reload ik dict.");
 		// 新开一个实例加载词典，减少加载过程对当前词典使用的影响
 		Dictionary tmpDict = new Dictionary(configuration);
-		tmpDict.configuration = getSingleton().configuration;
+		tmpDict.configuration = this.getCurrentDict().configuration;
 		tmpDict.loadMainDict();
 		tmpDict.loadStopWordDict();
 		_MainDict = tmpDict._MainDict;

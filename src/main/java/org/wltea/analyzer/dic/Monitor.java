@@ -31,8 +31,14 @@ public class Monitor implements Runnable {
 	 * 请求地址
 	 */
 	private String location;
+	
+	/*
+	 * 地址属于的index
+	 */
+	private String indexUUID;
 
-	public Monitor(String location) {
+	public Monitor(String indexUUID, String location) {
+		this.indexUUID = indexUUID;
 		this.location = location;
 		this.last_modified = null;
 		this.eTags = null;
@@ -84,7 +90,7 @@ public class Monitor implements Runnable {
 						||((response.getLastHeader("ETag")!=null) && !response.getLastHeader("ETag").getValue().equalsIgnoreCase(eTags))) {
 
 					// 远程词库有更新,需要重新加载词典，并修改last_modified,eTags
-					Dictionary.getSingleton().reLoadMainDict();
+					Dictionary.getSingleton(this.indexUUID).reLoadMainDict();
 					last_modified = response.getLastHeader("Last-Modified")==null?null:response.getLastHeader("Last-Modified").getValue();
 					eTags = response.getLastHeader("ETag")==null?null:response.getLastHeader("ETag").getValue();
 				}
