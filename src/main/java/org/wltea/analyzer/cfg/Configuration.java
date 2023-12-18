@@ -29,7 +29,6 @@ public class Configuration {
 	//是否启用小写处理
 	private boolean enableLowercase=true;
 
-
 	@Inject
 	public Configuration(IndexSettings indexSettings, Environment env,Settings settings) {
 		this.indexSettings = indexSettings;
@@ -39,9 +38,8 @@ public class Configuration {
 		this.useSmart = settings.get("use_smart", "false").equals("true");
 		this.enableLowercase = settings.get("enable_lowercase", "true").equals("true");
 		this.enableRemoteDict = settings.get("enable_remote_dict", "true").equals("true");
-
+		
 		Dictionary.initial(this);
-
 	}
 
 	public Path getConfigInPluginDir() {
