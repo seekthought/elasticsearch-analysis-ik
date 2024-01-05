@@ -37,7 +37,9 @@ import org.wltea.analyzer.dic.Hit;
  * 中文数量词子分词器
  */
 class CN_QuantifierSegmenter implements ISegmenter{
-	
+	// 关联的index uuid
+	private String indexUUID;
+
 	//子分词器标签
 	static final String SEGMENTER_NAME = "QUAN_SEGMENTER";
 	
@@ -67,7 +69,8 @@ class CN_QuantifierSegmenter implements ISegmenter{
 	private List<Hit> countHits;
 	
 	
-	CN_QuantifierSegmenter(){
+	CN_QuantifierSegmenter(String indexUUID){
+		this.indexUUID = indexUUID;
 		nStart = -1;
 		nEnd = -1;
 		this.countHits  = new LinkedList<Hit>();
@@ -153,7 +156,7 @@ class CN_QuantifierSegmenter implements ISegmenter{
 				//处理词段队列
 				Hit[] tmpArray = this.countHits.toArray(new Hit[this.countHits.size()]);
 				for(Hit hit : tmpArray){
-					hit = Dictionary.getSingleton().matchWithHit(context.getSegmentBuff(), context.getCursor() , hit);
+					hit = Dictionary.getSingleton(this.indexUUID).matchWithHit(context.getSegmentBuff(), context.getCursor() , hit);
 					if(hit.isMatch()){
 						//输出当前的词
 						Lexeme newLexeme = new Lexeme(context.getBufferOffset() , hit.getBegin() , context.getCursor() - hit.getBegin() + 1 , Lexeme.TYPE_COUNT);
@@ -172,7 +175,7 @@ class CN_QuantifierSegmenter implements ISegmenter{
 
 			//*********************************
 			//对当前指针位置的字符进行单字匹配
-			Hit singleCharHit = Dictionary.getSingleton().matchInQuantifierDict(context.getSegmentBuff(), context.getCursor(), 1);
+			Hit singleCharHit = Dictionary.getSingleton(this.indexUUID).matchInQuantifierDict(context.getSegmentBuff(), context.getCursor(), 1);
 			if(singleCharHit.isMatch()){//首字成量词词
 				//输出当前的词
 				Lexeme newLexeme = new Lexeme(context.getBufferOffset() , context.getCursor() , 1 , Lexeme.TYPE_COUNT);

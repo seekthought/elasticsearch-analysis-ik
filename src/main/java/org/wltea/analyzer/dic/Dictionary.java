@@ -67,7 +67,7 @@ public class Dictionary {
 	/*
 	 * 词典单子实例
 	 */
-	private static Dictionary singleton;
+	private static HashMap<String, Dictionary> indexDicts = new HashMap<String, Dictionary>(16);
 
 	private DictSegment _MainDict;
 
@@ -92,13 +92,34 @@ public class Dictionary {
 	private static final String PATH_DIC_STOP = "stopword.dic";
 
 	private final static  String FILE_NAME = "IKAnalyzer.cfg.xml";
-	private final static  String EXT_DICT = "ext_dict";
-	private final static  String REMOTE_EXT_DICT = "remote_ext_dict";
-	private final static  String EXT_STOP = "ext_stopwords";
-	private final static  String REMOTE_EXT_STOP = "remote_ext_stopwords";
 
 	private Path conf_dir;
 	private Properties props;
+	
+	/**
+	 * 全局 remote dict 配置
+	 */
+	// 配置在静态文件中，每个进程都会使用的 remote dict
+	private final static  String GLOBAL_EXT_DICT = "ext_dict";
+	private final static  String GLOBAL_REMOTE_EXT_DICT = "remote_ext_dict";
+	private final static  String GLOBAL_EXT_STOP = "ext_stopwords";
+	private final static  String GLOBAL_REMOTE_EXT_STOP = "remote_ext_stopwords";
+
+	/**
+	 * 配置从settings中动态加载的 remote dict
+	 */
+
+	private final static String DYNAMIC_REMOTE_EXT_DICT = "dynamic_remote_ext_dict";
+	private final static String DYNAMIC_REMOTE_EXT_STOP = "dynamic_remote_ext_stopwords";
+
+	/**
+	 * remote dict 存放的数据结构
+	 */
+	// 存放remote的
+	// private static HashMap<String, List<String>> remoteExtDictMap = new HashMap<String, List<String>>(16);
+
+	// private static HashMap<String, List<String>> remoteExtStopWordDictMap = new HashMap<String, List<String>>(16);
+
 
 	private Dictionary(Configuration cfg) {
 		this.configuration = cfg;
@@ -130,6 +151,14 @@ public class Dictionary {
 		}
 	}
 
+	private String getOwnerIndexUUID() {
+		return this.configuration.getIndexUUID();
+	}
+
+	private Dictionary getCurrentDict() {
+		return indexDicts.get(getOwnerIndexUUID());
+	}
+
 	private String getProperty(String key){
 		if(props!=null){
 			return props.getProperty(key);
@@ -143,30 +172,40 @@ public class Dictionary {
 	 * @return Dictionary
 	 */
 	public static synchronized void initial(Configuration cfg) {
-		if (singleton == null) {
-			synchronized (Dictionary.class) {
-				if (singleton == null) {
+		String indexUUID = cfg.getIndexUUID();
 
-					singleton = new Dictionary(cfg);
-					singleton.loadMainDict();
-					singleton.loadSurnameDict();
-					singleton.loadQuantifierDict();
-					singleton.loadSuffixDict();
-					singleton.loadPrepDict();
-					singleton.loadStopWordDict();
+		// 不存在，则创建该index的词典
+		if (!indexDicts.containsKey(indexUUID)) {
+			synchronized (Dictionary.class) {
+				Dictionary dict = new Dictionary(cfg);
+
+					dict.loadMainDict();
+					dict.loadSurnameDict();
+					dict.loadQuantifierDict();
+					dict.loadSuffixDict();
+					dict.loadPrepDict();
+					dict.loadStopWordDict();
 
 					if(cfg.isEnableRemoteDict()){
 						// 建立监控线程
-						for (String location : singleton.getRemoteExtDictionarys()) {
+						for (String location : dict.getRemoteExtDictionarys()) {
 							// 10 秒是初始延迟可以修改的 60是间隔时间 单位秒
-							pool.scheduleAtFixedRate(new Monitor(location), 10, 60, TimeUnit.SECONDS);
+							pool.scheduleAtFixedRate(new Monitor(indexUUID, location), 10, 60, TimeUnit.SECONDS);
 						}
-						for (String location : singleton.getRemoteExtStopWordDictionarys()) {
-							pool.scheduleAtFixedRate(new Monitor(location), 10, 60, TimeUnit.SECONDS);
+						for (String location : dict.getRemoteExtStopWordDictionarys()) {
+							pool.scheduleAtFixedRate(new Monitor(indexUUID, location), 10, 60, TimeUnit.SECONDS);
+						}
+						for (String location : dict.getDynamicRemoteExtDictionarys()) {
+							// 10 秒是初始延迟可以修改的 60是间隔时间 单位秒
+							logger.info("load remote dict {} ", location);
+							pool.scheduleAtFixedRate(new Monitor(indexUUID, location), 10, 60, TimeUnit.SECONDS);
+						}
+						for (String location : dict.getDynamicRemoteExtStopWordDictionarys()) {
+							logger.info("load remote dict {} ", location);
+							pool.scheduleAtFixedRate(new Monitor(indexUUID, location), 10, 60, TimeUnit.SECONDS);
 						}
 					}
-
-				}
+				indexDicts.put(indexUUID, dict);
 			}
 		}
 	}
@@ -218,7 +257,7 @@ public class Dictionary {
 
 	private List<String> getExtDictionarys() {
 		List<String> extDictFiles = new ArrayList<String>(2);
-		String extDictCfg = getProperty(EXT_DICT);
+		String extDictCfg = getProperty(GLOBAL_EXT_DICT);
 		if (extDictCfg != null) {
 
 			String[] filePaths = extDictCfg.split(";");
@@ -235,7 +274,7 @@ public class Dictionary {
 
 	private List<String> getRemoteExtDictionarys() {
 		List<String> remoteExtDictFiles = new ArrayList<String>(2);
-		String remoteExtDictCfg = getProperty(REMOTE_EXT_DICT);
+		String remoteExtDictCfg = getProperty(GLOBAL_REMOTE_EXT_DICT);
 		if (remoteExtDictCfg != null) {
 
 			String[] filePaths = remoteExtDictCfg.split(";");
@@ -249,9 +288,25 @@ public class Dictionary {
 		return remoteExtDictFiles;
 	}
 
+	private List<String> getDynamicRemoteExtDictionarys() {
+		List<String> dynamicRemoteExtDictFiles = new ArrayList<String>(2);
+		String dynamicRemoteExtDictCfg = this.configuration.getSettings().get(DYNAMIC_REMOTE_EXT_DICT, "");
+	
+		if (dynamicRemoteExtDictCfg != null) {
+
+			String[] filePaths = dynamicRemoteExtDictCfg.split(";");
+			for (String filePath : filePaths) {
+				if (filePath != null && !"".equals(filePath.trim())) {
+					dynamicRemoteExtDictFiles.add(filePath);
+				}
+			}
+		}
+		return dynamicRemoteExtDictFiles;
+	}
+
 	private List<String> getExtStopWordDictionarys() {
 		List<String> extStopWordDictFiles = new ArrayList<String>(2);
-		String extStopWordDictCfg = getProperty(EXT_STOP);
+		String extStopWordDictCfg = getProperty(GLOBAL_EXT_STOP);
 		if (extStopWordDictCfg != null) {
 
 			String[] filePaths = extStopWordDictCfg.split(";");
@@ -268,7 +323,8 @@ public class Dictionary {
 
 	private List<String> getRemoteExtStopWordDictionarys() {
 		List<String> remoteExtStopWordDictFiles = new ArrayList<String>(2);
-		String remoteExtStopWordDictCfg = getProperty(REMOTE_EXT_STOP);
+		String remoteExtStopWordDictCfg = this.configuration.getSettings().get(GLOBAL_REMOTE_EXT_STOP, "");
+
 		if (remoteExtStopWordDictCfg != null) {
 
 			String[] filePaths = remoteExtStopWordDictCfg.split(";");
@@ -282,6 +338,22 @@ public class Dictionary {
 		return remoteExtStopWordDictFiles;
 	}
 
+	private List<String> getDynamicRemoteExtStopWordDictionarys() {
+		List<String> dynamicRemoteExtStopWordDictFiles = new ArrayList<String>(2);
+		String dynamicRemoteExtStopWordDictCfg = getProperty(DYNAMIC_REMOTE_EXT_STOP);
+		if (dynamicRemoteExtStopWordDictCfg != null) {
+
+			String[] filePaths = dynamicRemoteExtStopWordDictCfg.split(";");
+			for (String filePath : filePaths) {
+				if (filePath != null && !"".equals(filePath.trim())) {
+					dynamicRemoteExtStopWordDictFiles.add(filePath);
+
+				}
+			}
+		}
+		return dynamicRemoteExtStopWordDictFiles;
+	}
+
 	private String getDictRoot() {
 		return conf_dir.toAbsolutePath().toString();
 	}
@@ -292,11 +364,11 @@ public class Dictionary {
 	 * 
 	 * @return Dictionary 单例对象
 	 */
-	public static Dictionary getSingleton() {
-		if (singleton == null) {
+	public static Dictionary getSingleton(String indexUUID) {
+		if (!indexDicts.containsKey(indexUUID)) {
 			throw new IllegalStateException("ik dict has not been initialized yet, please call initial method first.");
 		}
-		return singleton;
+		return indexDicts.get(indexUUID);
 	}
 
 
@@ -311,7 +383,7 @@ public class Dictionary {
 			for (String word : words) {
 				if (word != null) {
 					// 批量加载词条到主内存词典中
-					singleton._MainDict.fillSegment(word.trim().toCharArray());
+					this.getCurrentDict()._MainDict.fillSegment(word.trim().toCharArray());
 				}
 			}
 		}
@@ -325,7 +397,7 @@ public class Dictionary {
 			for (String word : words) {
 				if (word != null) {
 					// 批量屏蔽词条
-					singleton._MainDict.disableSegment(word.trim().toCharArray());
+					this.getCurrentDict()._MainDict.disableSegment(word.trim().toCharArray());
 				}
 			}
 		}
@@ -337,7 +409,7 @@ public class Dictionary {
 	 * @return Hit 匹配结果描述
 	 */
 	public Hit matchInMainDict(char[] charArray) {
-		return singleton._MainDict.match(charArray);
+		return this.getCurrentDict()._MainDict.match(charArray);
 	}
 
 	/**
@@ -346,7 +418,7 @@ public class Dictionary {
 	 * @return Hit 匹配结果描述
 	 */
 	public Hit matchInMainDict(char[] charArray, int begin, int length) {
-		return singleton._MainDict.match(charArray, begin, length);
+		return this.getCurrentDict()._MainDict.match(charArray, begin, length);
 	}
 
 	/**
@@ -355,7 +427,7 @@ public class Dictionary {
 	 * @return Hit 匹配结果描述
 	 */
 	public Hit matchInQuantifierDict(char[] charArray, int begin, int length) {
-		return singleton._QuantifierDict.match(charArray, begin, length);
+		return this.getCurrentDict()._QuantifierDict.match(charArray, begin, length);
 	}
 
 	/**
@@ -374,7 +446,7 @@ public class Dictionary {
 	 * @return boolean
 	 */
 	public boolean isStopWord(char[] charArray, int begin, int length) {
-		return singleton._StopWords.match(charArray, begin, length).isMatch();
+		return this.getCurrentDict()._StopWords.match(charArray, begin, length).isMatch();
 	}
 
 	/**
@@ -414,6 +486,7 @@ public class Dictionary {
 	 */
 	private void loadRemoteExtDict() {
 		List<String> remoteExtDictFiles = getRemoteExtDictionarys();
+		remoteExtDictFiles.addAll(getDynamicRemoteExtDictionarys());
 		for (String location : remoteExtDictFiles) {
 			logger.info("[Dict Loading] " + location);
 			List<String> lists = getRemoteWords(location);
@@ -430,7 +503,6 @@ public class Dictionary {
 				}
 			}
 		}
-
 	}
 
 	private static List<String> getRemoteWords(String location) {
@@ -513,6 +585,8 @@ public class Dictionary {
 
 		// 加载远程停用词典
 		List<String> remoteExtStopWordDictFiles = getRemoteExtStopWordDictionarys();
+		remoteExtStopWordDictFiles.addAll(getDynamicRemoteExtStopWordDictionarys());
+
 		for (String location : remoteExtStopWordDictFiles) {
 			logger.info("[Dict Loading] " + location);
 			List<String> lists = getRemoteWords(location);
@@ -565,7 +639,7 @@ public class Dictionary {
 		logger.info("start to reload ik dict.");
 		// 新开一个实例加载词典，减少加载过程对当前词典使用的影响
 		Dictionary tmpDict = new Dictionary(configuration);
-		tmpDict.configuration = getSingleton().configuration;
+		tmpDict.configuration = this.getCurrentDict().configuration;
 		tmpDict.loadMainDict();
 		tmpDict.loadStopWordDict();
 		_MainDict = tmpDict._MainDict;
